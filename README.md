@@ -1,11 +1,22 @@
-## My Project
+## Understand your network traffic trends using AWS Transit Gateway Flow Logs
 
-TODO: Fill this README out!
+This repo contains a AWS CloudFormation templates which will deploy resources that allows you to query AWS Transit Transit Gateway flow logs via Amazon Athena. Additionally it will also create pre-defined queires to get answers for most common questions from your Transit Gateway logs.
 
-Be sure to:
+## Prerequisites
 
-* Change the title in this README
-* Edit your repository description on GitHub
+* AWS Account
+* AWS VPC
+* AWS Transit Gateway
+
+## Architecture:
+
+![VPC Flow Logs enbricher architecture](/images/VPCFlowLogsforTransitGatewayArchitecture.png)
+
+For complete details on how this works, please read the blog post "Understand your network traffic trends using AWS Transit Gateway Flow Logs"
+
+## Contributing
+
+We welcome contributions! Please submit a pull request using the PR template.
 
 ## Security
 
@@ -15,3 +26,6 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
 
+## Contact
+
+For bug reports or feature requests, please open a new issue.

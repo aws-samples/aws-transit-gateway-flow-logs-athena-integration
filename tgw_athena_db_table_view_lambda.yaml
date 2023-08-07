@@ -1,0 +1,656 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template creates Athena Database and View for Transit Gateway Flow Logs'
+Parameters:
+  AthenaQueryResultBucketArn:
+    Type: String
+    Description: The ARN of the Amazon S3 bucket to which Athena query results are stored. e.g. 'arn:aws:s3:::aws-athena-query-results-us-east-1-XXXXXXXXXXXXXX'
+    Default: ''
+  AthenaResultsOutputLocation:
+    Type: String
+    Description: URI path of the Amazon S3 bucket where Athena query results are stored.
+  TGWFlowLogsBucketName:
+    Type: String
+    Description: Name of the Amazon S3 bucket where tgw flow logs are stored. e.g. my-tgw-flow-logs-bucket
+    Default: ''
+  TGWFlowLogsS3BucketLocation:
+    Type: String
+    Description: URI path of Amazon S3 bucket folder where TGW Flow logs files are stored e.g. Location='s3://my-tgw-flow-logs-bucket/tgw/AWSLogs/0123456789/tgwflowlogs/us-east-1/2023/11/20/'
+  TGWFlowLogsFilePrefix:
+    Description: (Optional) - The log file prefix in Amazon S3 bucket that comes right after s3 bucket name e.g. 'tgw'
+    Type: String
+    Default: ''
+  TGWFlowLogsAthenaDatabaseName:
+    Type: String
+    Description: (Optional) If you leave this blank this template will create an Athena database where external table for TGW flow logs is created. If you have already created a DB then external table will be created under existing DB.
+  TGWFlowLogsAthenaTableName:
+    Type: String
+    Description: (Optional) If you leave this blank this template will create new Athena external table name for TGW flow logs otherwise it will use the existing table name you provided.
+  HiveCompatibleS3prefix:
+    Type: String
+    Description: Adds prefixes of partition keys in s3 object key (Hive-compatible S3 prefix)
+    AllowedValues:
+      - true
+    Default: true
+  S3BucketRegion:
+    Type: String
+    Description: Region of the S3 bucket created in the central account. e.g. us-east-1
+  
+Conditions:
+  TGWLogsAthenaDataBaseCondition: !Equals [!Ref TGWFlowLogsAthenaDatabaseName, '']
+  ExistingTGWLogsAthenaDataBaseCondition: !Not [!Equals [!Ref TGWFlowLogsAthenaDatabaseName, '']]
+  TGWLogsAthenaTableCondition: !Equals [!Ref TGWFlowLogsAthenaTableName, '']
+  ExistingTGWLogsAthenaTableCondition: !Not [!Equals [!Ref TGWFlowLogsAthenaTableName, '']]
+Resources:
+  TGWAthenaWorkGroup:
+      Type: AWS::Athena::WorkGroup
+      Properties:
+        Name: TGWFlowLogsQueryWorkGroup
+        Description: This workgroup has the queries related to vpc flow logs.
+        State: ENABLED
+        Tags:
+          - Key: "service"
+            Value: "tgw_flow_logs"
+        WorkGroupConfiguration:
+          BytesScannedCutoffPerQuery: 200000000
+          EnforceWorkGroupConfiguration: true
+          PublishCloudWatchMetricsEnabled: true
+          RequesterPaysEnabled: true
+          ResultConfiguration:
+            OutputLocation: !Ref AthenaResultsOutputLocation
+            #s3://299712487168-athena-results
+          EngineVersion:
+            SelectedEngineVersion: 'Athena engine version 3'
+  # Creates a glue database for TGW Flow logs
+  TGWFlowLogsAthenaDatabase:
+    Condition: TGWLogsAthenaDataBaseCondition
+    Type: AWS::Glue::Database
+    Properties:
+      DatabaseInput:
+        Name: 'tgwflowlogsathenadatabase'
+      CatalogId: !Ref AWS::AccountId
+  # Create Athena external Table for VPC Flow Logs
+  TGWFlowLogsAthenaTable:
+    Condition: TGWLogsAthenaTableCondition
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !If [ExistingTGWLogsAthenaDataBaseCondition, !Ref TGWFlowLogsAthenaDatabaseName, !Sub '${TGWFlowLogsAthenaDatabase}']
+      TableInput:
+        Description: This table has the schema for tgw flow logs information.
+        Name: tgw_flow_logs
+        PartitionKeys:
+          - Name: aws-account-id
+            Type: string
+          - Name: aws-service
+            Type: string
+          - Name: aws-region
+            Type: string
+          - Name: year
+            Type: string
+          - Name: month
+            Type: string
+          - Name: day
+            Type: string
+        TableType: EXTERNAL_TABLE
+        StorageDescriptor:
+          Location:  !Ref TGWFlowLogsS3BucketLocation
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            Parameters:
+              skip.header.line.count: "1"
+              EXTERNAL: "true"
+              field.delim: ' '
+              serialization.format: ' '
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Columns:
+            - Name: 'version'
+              Type: int
+            - Name: 'resource_type'
+              Type: string
+            - Name: 'account_id'
+              Type: string
+            - Name: 'tgw_id'
+              Type: string
+            - Name: 'tgw_attachment_id'
+              Type: string
+            - Name: 'tgw_src_vpc_account_id'
+              Type: string
+            - Name: 'tgw_dst_vpc_account_id'
+              Type: string
+            - Name: 'tgw_src_vpc_id'
+              Type: string
+            - Name: 'tgw_dst_vpc_id'
+              Type: string
+            - Name: 'tgw_src_subnet_id'
+              Type: string
+            - Name: 'tgw_dst_subnet_id'
+              Type: string
+            - Name: 'tgw_src_eni'
+              Type: string
+            - Name: 'tgw_dst_eni'
+              Type: string
+            - Name: 'tgw_src_az_id'
+              Type: string
+            - Name: 'tgw_dst_az_id'
+              Type: string
+            - Name: 'tgw_pair_attachment_id'
+              Type: string
+            - Name: 'srcaddr'
+              Type: string
+            - Name: 'dstaddr'
+              Type: string
+            - Name: 'srcport'
+              Type: int
+            - Name: 'dstport'
+              Type: int
+            - Name: 'protocol'
+              Type: int
+            - Name: 'packets'
+              Type: bigint
+            - Name: 'bytes'
+              Type: bigint
+            - Name: 'start'
+              Type: bigint
+            - Name: 'end'
+              Type: bigint
+            - Name: 'log_status'
+              Type: string
+            - Name: 'type'
+              Type: string
+            - Name: 'packets_lost_no_route'
+              Type: bigint
+            - Name: 'packets_lost_blackhole'
+              Type: bigint
+            - Name: 'packets_lost_mtu_exceeded'
+              Type: bigint
+            - Name: 'packets_lost_ttl_expired'
+              Type: bigint
+            - Name: 'tcp_flags'
+              Type: int
+            - Name: 'region'
+              Type: string
+            - Name: 'flow_direction'
+              Type: string
+            - Name: 'pkt_dst_aws_service'
+              Type: string
+            - Name: 'pkt_src_aws_service'
+              Type: string
+  TGWFlowLogsTotalBytes:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 pairs of source and destination IP addresses with the most bytes transferred. The start and end in the WHERE clause are placeholders"
+      Name: TGWFlowLogsTotalBytesTransferred
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, srcaddr, dstaddr from tgw_flow_logs
+        WHERE "start"=1685640229851 AND "end"=1685640229851
+        GROUP BY srcaddr, dstaddr
+        ORDER BY totalbytes
+        LIMIT 50
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopTalkers:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "The top 50 IPs transmitting traffic in your VPC/ENI/Subnet."
+      Name: TGWFlowLogsTopTalkers
+      QueryString: >
+        SELECT srcaddr, sum(bytes) as bytes
+        FROM tgw_flow_logs
+        group by srcaddr
+        order by bytes desc
+        limit 50
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsSshRdpTraffic:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Monitor SSH and RDP traffic"
+      Name: TGWFlowLogsSshRdpTraffic
+      QueryString: >
+        SELECT *
+        FROM tgw_flow_logs
+        WHERE srcport in (22,3389) OR dstport IN (22, 3389)
+        ORDER BY "start" ASC
+        limit 50
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsAdminPortTraffic:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Monitor the traffic on administrative web app ports"
+      Name: TGWFlowLogsAdminPortTraffic
+      QueryString: >
+        SELECT ip, sum(bytes) as total_bytes
+        FROM (
+        SELECT dstaddr as ip,sum(bytes) as bytes
+        FROM tgw_flow_logs
+        GROUP BY 1
+        UNION ALL
+        SELECT srcaddr as ip,sum(bytes) as bytes
+        FROM tgw_flow_logs
+        GROUP BY 1
+        )
+        GROUP BY ip
+        ORDER BY total_bytes
+        DESC LIMIT 10
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsTrafficFrmSrcAddr:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Traffic transmitted from a particular source IP address. Here the source address (srcaddr) is a placeholder"
+      Name: TGWFlowLogsTrafficFrmSrcAddr
+      QueryString: >
+        SELECT *
+        FROM tgw_flow_logs
+        WHERE srcaddr = '198.51.100.2'
+        ORDER BY "start" ASC
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsTrafficToDstAddr:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Traffic transmitted from a particular destination IP address. Here the destination address (dstaddr) is a placeholder"
+      Name: TGWFlowLogsTrafficToDstAddr
+      QueryString: >
+        SELECT *
+        FROM tgw_flow_logs
+        WHERE dstaddr = '198.51.100.2'
+        ORDER BY "start" ASC
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsTopTalkingSourceSubnets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Subnet IDs which send most amount of traffic. The start and end are epoch times and are placeholder."
+      Name: TGWFlowLogsTopTalkingSubnets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_src_subnet_id from tgw_flow_logs
+        WHERE "start"=1685640229851 AND "end"=1685640229851
+        GROUP BY tgw_src_subnet_id
+        ORDER BY totalbytes
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsTopTalkingDestSubnets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Subnet IDs which send most amount of traffic. The start and end are epoch times and are placeholder."
+      Name: TGWFlowLogsTopTalkingSubnets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_dst_subnet_id from tgw_flow_logs
+        WHERE "start"=1685640229851 AND "end"=1685640229851
+        GROUP BY tgw_dst_subnet_id
+        ORDER BY totalbytes
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsIPv6Traffic:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Total bytes of IPv6 traffic."
+      Name: TGWFlowLogsIPv6Traffic
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, srcaddr, dstaddr from tgw_flow_logs
+        WHERE type = 'IPv6'
+        GROUP BY srcaddr, dstaddr
+        ORDER BY totalbytes
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsIPv4Traffic:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Total bytes of IPv4 traffic."
+      Name: TGWFlowLogsIPv4Traffic
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, srcaddr, dstaddr from tgw_flow_logs
+        WHERE type = 'IPv4'
+        GROUP BY srcaddr, dstaddr
+        ORDER BY totalbytes
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+
+  TGWFlowLogsTopTCPTraffic:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "All TCP traffic originating from a source IP"
+      Name: TGWFlowLogsTopTCPTraffic
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, srcaddr from tgw_flow_logs
+        WHERE "protocol" = 6
+        GROUP BY srcaddr
+        ORDER BY totalbytes
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  # Creates an IAM role for lambda function execution permission
+  TGWFlowLogsAthenaIntegrationLambdaExecutorRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Path: /
+        Policies:
+          - PolicyName: TGWFlowLogsAthenaIntegrationLambdaExecutorPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:ListBucket
+                    - logs:CreateLogGroup
+                  Resource:
+                    - !Sub '${AthenaQueryResultBucketArn}'
+                    - !Sub 'arn:aws:s3:::${TGWFlowLogsBucketName}'
+                    - !Sub 'arn:aws:logs:${S3BucketRegion}:${AWS::AccountId}:*'
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                    - s3:GetBucketLocation
+                    - s3:GetObject
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - !Sub '${AthenaQueryResultBucketArn}'
+                    - !Sub '${AthenaQueryResultBucketArn}/*'
+                    - !Sub 'arn:aws:logs:${S3BucketRegion}:${AWS::AccountId}:log-group:/aws/lambda/tgw_logs_lambda_handler:*'
+                - Effect: Allow
+                  Action:
+                    - athena:GetQueryResults
+                    - athena:StartQueryExecution
+                    - athena:CreateNamedQuery
+                    - athena:GetQueryExecution
+                  Resource:
+                    - !Sub 'arn:aws:athena:*:${AWS::AccountId}:workgroup/primary'
+                - Effect: Allow
+                  Action:
+                    - glue:GetDatabase
+                    - glue:GetTable
+                    - glue:CreateTable
+                    - glue:UpdateTable
+                    - glue:BatchCreatePartition
+                    - glue:CreatePartition
+                    - glue:UpdatePartition
+                    - glue:GetPartition
+                  Resource:
+                    - !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:catalog'
+                    - !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:database/${TGWFlowLogsAthenaDatabaseName}', !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:database/${TGWFlowLogsAthenaDatabase}']
+                    - !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:table/${TGWFlowLogsAthenaDatabaseName}/${TGWFlowLogsAthenaTableName}', !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:table/${TGWFlowLogsAthenaDatabase}/${TGWFlowLogsAthenaTable}']
+                - Effect: Allow
+                  Action:
+                    - s3:GetObjectAcl
+                    - s3:GetObject
+                    - s3:GetObjectTagging
+                    - s3:GetBucketPolicy
+                  Resource:
+                    - !Sub 'arn:aws:s3:::${TGWFlowLogsBucketName}'
+                    - !Sub 'arn:aws:s3:::${TGWFlowLogsBucketName}/*'
+        Tags:
+          -
+            Key: Name
+            Value: TGWFlowLogs-Lambda-Role
+          -
+            Key: Purpose
+            Value: TGWFlowLogs
+    # Create Athena view for TGW Flow Logs
+  # Creates a lambda fuction to add partitions to TGW Flow Logs external table
+  TGWAthenaPartitionsFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Description: Adds partitions to tgwflowlogsathenadatabase Athena table for current day. Triggered by Cloudwatch scheduler with daily frequency.
+        Handler: index.lambda_handler
+        Runtime: python3.8
+        Role: !GetAtt 'TGWFlowLogsAthenaIntegrationLambdaExecutorRole.Arn'
+        Timeout: 30
+        ReservedConcurrentExecutions: 5
+        Code:
+          ZipFile: |
+
+            import boto3
+            import datetime
+            import time
+            import re
+            import cfnresponse
+
+            #S3 and Athena client
+            s3 = boto3.client('s3')
+            athena = boto3.client('athena')
+
+            #Get Year, Month, Day for partition
+            date = datetime.datetime.now()
+            athena_year = str(date.year)
+            athena_month = str(date.month).rjust(2, '0')
+            athena_day = str(date.day).rjust(2, '0')
+
+            s3_buckcet_flow_log = '' # '<s3 bucket name where flow logs will be stored>'
+            s3_account_prefix = 'tgw-flow-logs/AWSLogs/' # '<prefix for VPC flow logs that comes after bucket name>' e.g. 'tgw-flow-logs'
+            s3_ouput = '<S3 bucket URL where Athena query results are stored>'
+            # e.g. 's3://aws-athena-query-results-us-east-1-<account number>'
+            database = ''
+            table_name = '' # '<Athena table name for VPC flow logs>'
+
+            #Executing the athena query:
+            def run_query(query, database, s3_output):
+              try:
+                query_response = athena.start_query_execution(
+                QueryString=query,
+                QueryExecutionContext={
+                    'Database': database
+                    },
+                ResultConfiguration={
+                    'OutputLocation': s3_output,
+                    }
+                )
+                
+                execution_id=query_response['QueryExecutionId']
+                state = 'RUNNING'
+                while (state in ['RUNNING', 'QUEUED']):
+                    response = athena.get_query_execution(QueryExecutionId=execution_id)
+                    if 'QueryExecution' in response and 'Status' in response['QueryExecution'] and 'State' in \
+                            response['QueryExecution']['Status']:
+                        state = response['QueryExecution']['Status']['State']
+                        if state == 'FAILED':
+                            print(response)
+                            print("state == FAILED")
+                            print('Execution ID: ' + query_response['QueryExecutionId'])
+                            return False
+                        elif state == 'SUCCEEDED':
+                            s3_path = response['QueryExecution']['ResultConfiguration']['OutputLocation']
+                            filename = re.findall('.*\/(.*)', s3_path)[0]
+                            return response
+                    time.sleep(1)
+              except Exception as e:
+                print("Query Exception:- ", e)
+
+              return query_response
+
+            #Function to get the regions and run the query on the captured regions
+            def lambda_handler(event, context):
+              errs = {}
+              status = cfnresponse.SUCCESS
+              account_id=None
+              region=None
+
+              database = event["ResourceProperties"]["dbName"] if event.get("ResourceProperties") != None else event["dbName"]
+              table_name = event["ResourceProperties"]["TGWTableName"] if event.get("ResourceProperties") != None else event["TGWTableName"]
+              frequency = event["ResourceProperties"]["frequency"] if event.get("ResourceProperties") != None else event["frequency"]
+              s3_buckcet_flow_log = event["ResourceProperties"]["TGWFlowLogsBucketName"] if event.get("ResourceProperties") != None else event["TGWFlowLogsBucketName"]
+              s3_ouput = event["ResourceProperties"]["s3Output"] if event.get("ResourceProperties") != None else event["s3Output"]
+              s3_account_prefix=event["ResourceProperties"]["TGWFlowLogsFilePrefix"] + "/AWSLogs/" if event.get("ResourceProperties") != None else event["TGWFlowLogsFilePrefix"] + "/AWSLogs/"
+              hive_compatible_s3_prefix = event["ResourceProperties"]["HiveCompatibleS3prefix"] if event.get("ResourceProperties") != None else event["HiveCompatibleS3prefix"]
+              account_result = s3.list_objects(Bucket=s3_buckcet_flow_log,Prefix=s3_account_prefix, Delimiter='/')
+
+              if event.get("RequestType") == 'Delete':
+                status = cfnresponse.SUCCESS
+                cfnresponse.send(event, context, status, {}, event["LogicalResourceId"])
+              else:
+                try:
+                  for accounts in account_result.get('CommonPrefixes'):
+                    get_account=(accounts.get('Prefix','').replace(s3_account_prefix,'').replace('/',''))
+                    if get_account.find("=") >0: 
+                      account_id=get_account.split("=")[1] 
+                    else: 
+                      account_id=get_account
+
+                    if hive_compatible_s3_prefix == 'true':
+                      s3_prefix = s3_account_prefix + get_account + '/aws-service=vpcflowlogs/'
+                    else:
+                      s3_prefix = s3_account_prefix + get_account + '/vpcflowlogs/'
+
+                    s3_input = 's3://' + s3_buckcet_flow_log + '/' + s3_prefix
+                    
+                    result =  s3.list_objects(Bucket=s3_buckcet_flow_log,Prefix=s3_prefix, Delimiter='/')                    
+                    for regions in result.get('CommonPrefixes'):
+                      get_region=(regions.get('Prefix','').replace(s3_prefix,'').replace('/',''))
+                      if get_region.find("=") >0: 
+                        region=get_region.split("=")[1] 
+                      else: 
+                        region=get_region
+
+                      if hive_compatible_s3_prefix == 'true':
+                        query = str("ALTER TABLE "+ database + "." + table_name +" ADD PARTITION (`aws-account-id`=\""
+                                + account_id + "\", `aws-service`=\"vpcflowlogs\", `aws-region`=\""
+                                + region + "\", year=\""
+                                + athena_year + "\", month=\""
+                                + athena_month + "\", day=\""
+                                + athena_day + "\"")
+                      else:
+                        query = str("ALTER TABLE "+ database + "." + table_name +" ADD PARTITION (`aws-account-id`=\""
+                              + account_id + "\", `aws-service`=\"vpcflowlogs\", `aws-region`=\""
+                              + region + "\", year=\""
+                              + athena_year + "\", month=\""
+                              + athena_month + "\", day=\""
+                              + athena_day + "\"")
+
+                      if hive_compatible_s3_prefix == 'true':
+                        if frequency == "Hourly":
+                            query += ", hour=\"00\")"
+                        else:
+                            query += ")"
+                        query += " location '" + s3_input + get_region + "/year=" + athena_year + "/month=" + athena_month + "/day=" + athena_day
+                        if frequency == "Hourly":
+                            query += "/hour=00';"
+                        else:
+                            query += "';"
+                      else:
+                        if frequency == "Hourly":
+                            query += ", \"00\")"
+                        else:
+                            query += ")"
+                        query += " location '" + s3_input + get_region + "/" + athena_year + "/" + athena_month + "/" + athena_day
+                        if frequency == "Hourly":
+                            query += "/00';"
+                        else:
+                            query += "';"
+
+                      query_result=run_query(query, database, s3_ouput)
+
+                    status = cfnresponse.SUCCESS
+                except Exception as e:
+                  errs = e
+                  status = cfnresponse.FAILED
+                finally:
+                  status = cfnresponse.SUCCESS
+                  if event.get("RequestType") != None: cfnresponse.send(event, context, status, {}, event.get("LogicalResourceId"))                  
+        Tags:
+          -
+            Key: Name
+            Value: TGWFlowLogs-Lambda-Function
+          -
+            Key: Purpose
+            Value: TGWFlowLogs
+  # Cloudwatch event rule that will be triggered daily for adding partitions to vpc flow logs Athena table            
+  DailyAddPartitionLambdaEventsRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Event rule to trigger lambda function that adds partition to athena table for TGW flow logs.
+      Name: daily-add-tgw-logs-partitions
+      ScheduleExpression: "rate(1 day)"
+      State: ENABLED
+      Targets: 
+        - Arn: !Sub ${TGWAthenaPartitionsFunction.Arn}
+          Id: DailyAddPartitionLambdaEventsRule
+          Input: !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub  '{"frequency": "Daily", "dbName": "${TGWFlowLogsAthenaDatabaseName}", "TGWTableName": "${TGWFlowLogsAthenaTableName}", "s3Output": "${AthenaResultsOutputLocation}", "TGWFlowLogsBucketName": "${TGWFlowLogsBucketName}", "TGWFlowLogsFilePrefix": "${TGWFlowLogsFilePrefix}", "HiveCompatibleS3prefix": "${HiveCompatibleS3prefix}"}', !Sub  '{"frequency": "Daily", "dbName": "${TGWFlowLogsAthenaDatabase}", "TGWTableName": "${TGWFlowLogsAthenaTable}", "s3Output": "${AthenaResultsOutputLocation}", "TGWFlowLogsBucketName": "${TGWFlowLogsBucketName}", "TGWFlowLogsFilePrefix": "${TGWFlowLogsFilePrefix}", "HiveCompatibleS3prefix": "${HiveCompatibleS3prefix}"}']   
+  # Creates permission for cloudwatch events to execute lambda function
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Sub ${TGWAthenaPartitionsFunction.Arn}
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "DailyAddPartitionLambdaEventsRule"
+          - "Arn"
+  # Creates an initializer trigger Athena partition lambda function invokation 
+  CreatePartitionInitializer:
+    Type: 'Custom::TGWFlowLogsAthenaPartitionInitializer'
+    DependsOn:
+      - TGWAthenaPartitionsFunction
+    Properties:
+      ServiceToken: !GetAtt TGWAthenaPartitionsFunction.Arn
+      dbName: !If [ExistingTGWLogsAthenaDataBaseCondition, !Ref TGWFlowLogsAthenaDatabaseName, !Sub '${TGWFlowLogsAthenaDatabase}']
+      TGWTableName: !If [ExistingTGWLogsAthenaTableCondition, !Ref TGWFlowLogsAthenaTableName, !Ref TGWFlowLogsAthenaTable]
+      service: tgwflowlogs
+      frequency: "Daily"
+      s3Output: !Ref AthenaResultsOutputLocation
+      TGWFlowLogsBucketName: !Ref TGWFlowLogsBucketName
+      TGWFlowLogsFilePrefix: !Ref TGWFlowLogsFilePrefix
+      HiveCompatibleS3prefix: !Ref HiveCompatibleS3prefix
+Outputs:
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
