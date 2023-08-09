@@ -369,6 +369,156 @@ Resources:
         ORDER BY totalbytes
         LIMIT 50;
       WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcVPCs:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source VPC IDs which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcVPCs
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_vpc_id from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id, tgw_attachment_id, tgw_src_vpc_id 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentDstVPCs:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Destination VPC IDs which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentDstVPCs
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_dst_vpc_id from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id, tgw_attachment_id, tgw_dst_vpc_id 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstVPCs:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source VPC IDs, Destination VPC IDs which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstVPCs
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_vpc_id, tgw_dst_vpc_id from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id,  tgw_attachment_id,  tgw_src_vpc_id,  tgw_dst_vpc_id 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstSubnets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source Subnet, Destination Subnet which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstSubnets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_subnet_id, tgw_dst_subnet_id from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id, tgw_attachment_id, tgw_src_subnet_id, tgw_dst_subnet_id 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstENI:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source ENI, Destination ENI which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstENI
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_eni, tgw_dst_eni from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id, tgw_attachment_id, tgw_src_eni, tgw_dst_eni 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstAZs:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source AZ, Destination AZ which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstAZs
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_az_id, tgw_dst_az_id from tgw_flow_logs 
+        GROUP BY srcaddr, tgw_id, tgw_attachment_id, tgw_src_az_id, tgw_dst_az_id 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstAZsIPsPackets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source VPC, Destination VPC, Source AZ, Destination AZ, Source and Destination IPs, Packets details which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstAZsIPsPackets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, tgw_src_vpc_id, tgw_dst_vpc_id, tgw_src_az_id, tgw_dst_az_id, srcaddr, dstaddr, SUM(packets_lost_no_route) as totalpacketslostnoroute, SUM(packets_lost_blackhole) as totalpacketslostblackhole, SUM(packets_lost_mtu_exceeded) as totalpacketslostmtuexceeded, SUM(packets_lost_ttl_expired) as totalpacketslostttlexpired from tgw_flow_logs 
+        GROUP BY tgw_id, tgw_attachment_id, tgw_src_vpc_id, tgw_dst_vpc_id, tgw_src_az_id, tgw_dst_az_id, srcaddr, dstaddr 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstIPsPortPackets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, Source and Destination Port, Protocol, Packets details which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstAZsIPsPortPackets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, srcaddr, dstaddr, srcport, dstport, protocol, SUM(packets_lost_no_route)  as totalpacketslostnoroute , SUM(packets_lost_blackhole) as totalpacketslostblackhole, SUM(packets_lost_mtu_exceeded) as totalpacketslostmtuexceeded , SUM(packets_lost_ttl_expired) as totalpacketslostttlexpired from tgw_flow_logs 
+        GROUP BY tgw_id, tgw_attachment_id, srcaddr, dstaddr,srcport, dstport, protocol 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstIPsDstPortPackets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, DestinationPort, Protocol, Packets details which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstIPsDstPortPackets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id,  tgw_attachment_id, srcaddr, dstaddr, dstport, protocol, SUM(packets_lost_no_route)  as totalpacketslostnoroute , SUM(packets_lost_blackhole) as totalpacketslostblackhole, SUM(packets_lost_mtu_exceeded) as totalpacketslostmtuexceeded , SUM(packets_lost_ttl_expired) as totalpacketslostttlexpired from tgw_flow_logs 
+        GROUP BY tgw_id, tgw_attachment_id, srcaddr, dstaddr, dstport, protocol 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
+  TGWFlowLogsTopAttachmentSrcDstIPsProtocolPackets:
+    Type: AWS::Athena::NamedQuery
+    DependsOn:
+      - TGWFlowLogsAthenaDatabase
+      - TGWAthenaWorkGroup
+    Properties:
+      Database: !Ref TGWFlowLogsAthenaDatabase
+      Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, Protocol, Packets details which send most amount of traffic."
+      Name: TGWFlowLogsTopAttachmentSrcDstIPsProtocolPackets
+      QueryString: >
+        SELECT SUM(bytes) as totalbytes, tgw_id, tgw_attachment_id, srcaddr, dstaddr, protocol, SUM(packets_lost_no_route)  as totalpacketslostnoroute, SUM(packets_lost_blackhole) as totalpacketslostblackhole, SUM(packets_lost_mtu_exceeded) as totalpacketslostmtuexceeded, SUM(packets_lost_ttl_expired) as totalpacketslostttlexpired from tgw_flow_logs 
+        GROUP BY tgw_id, tgw_attachment_id, srcaddr, dstaddr, protocol 
+        ORDER BY totalbytes 
+        LIMIT 50;
+      WorkGroup: !Ref TGWAthenaWorkGroup
   # Creates an IAM role for lambda function execution permission
   TGWFlowLogsAthenaIntegrationLambdaExecutorRole:
       Type: AWS::IAM::Role
