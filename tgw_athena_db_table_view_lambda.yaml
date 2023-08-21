@@ -19,12 +19,6 @@ Parameters:
     Description: (Optional) - The log file prefix in Amazon S3 bucket that comes right after s3 bucket name e.g. 'tgw'
     Type: String
     Default: ''
-  TGWFlowLogsAthenaDatabaseName:
-    Type: String
-    Description: (Optional) If you leave this blank this template will create an Athena database where external table for TGW flow logs is created. If you have already created a DB then external table will be created under existing DB.
-  TGWFlowLogsAthenaTableName:
-    Type: String
-    Description: (Optional) If you leave this blank this template will create new Athena external table name for TGW flow logs otherwise it will use the existing table name you provided.
   HiveCompatibleS3prefix:
     Type: String
     Description: Adds prefixes of partition keys in s3 object key (Hive-compatible S3 prefix)
@@ -33,13 +27,7 @@ Parameters:
     Default: true
   S3BucketRegion:
     Type: String
-    Description: Region of the S3 bucket created in the central account. e.g. us-east-1
-  
-Conditions:
-  TGWLogsAthenaDataBaseCondition: !Equals [!Ref TGWFlowLogsAthenaDatabaseName, '']
-  ExistingTGWLogsAthenaDataBaseCondition: !Not [!Equals [!Ref TGWFlowLogsAthenaDatabaseName, '']]
-  TGWLogsAthenaTableCondition: !Equals [!Ref TGWFlowLogsAthenaTableName, '']
-  ExistingTGWLogsAthenaTableCondition: !Not [!Equals [!Ref TGWFlowLogsAthenaTableName, '']]
+    Description: Region of the S3 bucket created in the central account. e.g. us-east-1  
 Resources:
   TGWAthenaWorkGroup:
       Type: AWS::Athena::WorkGroup
@@ -57,12 +45,10 @@ Resources:
           RequesterPaysEnabled: true
           ResultConfiguration:
             OutputLocation: !Ref AthenaResultsOutputLocation
-            #s3://299712487168-athena-results
           EngineVersion:
             SelectedEngineVersion: 'Athena engine version 3'
   # Creates a glue database for TGW Flow logs
   TGWFlowLogsAthenaDatabase:
-    Condition: TGWLogsAthenaDataBaseCondition
     Type: AWS::Glue::Database
     Properties:
       DatabaseInput:
@@ -70,11 +56,11 @@ Resources:
       CatalogId: !Ref AWS::AccountId
   # Create Athena external Table for VPC Flow Logs
   TGWFlowLogsAthenaTable:
-    Condition: TGWLogsAthenaTableCondition
+    # Condition: TGWLogsAthenaTableCondition
     Type: AWS::Glue::Table
     Properties:
       CatalogId: !Ref AWS::AccountId
-      DatabaseName: !If [ExistingTGWLogsAthenaDataBaseCondition, !Ref TGWFlowLogsAthenaDatabaseName, !Sub '${TGWFlowLogsAthenaDatabase}']
+      DatabaseName: !Sub '${TGWFlowLogsAthenaDatabase}'
       TableInput:
         Description: This table has the schema for tgw flow logs information.
         Name: tgw_flow_logs
@@ -178,9 +164,6 @@ Resources:
               Type: string
   TGWFlowLogsTotalBytes:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 pairs of source and destination IP addresses with the most bytes transferred. The start and end in the WHERE clause are placeholders"
@@ -194,9 +177,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopTalkers:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "The top 50 IPs transmitting traffic in your VPC/ENI/Subnet."
@@ -211,9 +191,6 @@ Resources:
 
   TGWFlowLogsSshRdpTraffic:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Monitor SSH and RDP traffic"
@@ -228,9 +205,6 @@ Resources:
 
   TGWFlowLogsAdminPortTraffic:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Monitor the traffic on administrative web app ports"
@@ -253,9 +227,6 @@ Resources:
 
   TGWFlowLogsTrafficFrmSrcAddr:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Traffic transmitted from a particular source IP address. Here the source address (srcaddr) is a placeholder"
@@ -270,9 +241,6 @@ Resources:
 
   TGWFlowLogsTrafficToDstAddr:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Traffic transmitted from a particular destination IP address. Here the destination address (dstaddr) is a placeholder"
@@ -287,9 +255,6 @@ Resources:
 
   TGWFlowLogsTopTalkingSourceSubnets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Subnet IDs which send most amount of traffic. The start and end are epoch times and are placeholder."
@@ -304,9 +269,6 @@ Resources:
 
   TGWFlowLogsTopTalkingDestSubnets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Subnet IDs which send most amount of traffic. The start and end are epoch times and are placeholder."
@@ -321,9 +283,6 @@ Resources:
 
   TGWFlowLogsIPv6Traffic:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Total bytes of IPv6 traffic."
@@ -338,9 +297,6 @@ Resources:
 
   TGWFlowLogsIPv4Traffic:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Total bytes of IPv4 traffic."
@@ -355,9 +311,6 @@ Resources:
 
   TGWFlowLogsTopTCPTraffic:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "All TCP traffic originating from a source IP"
@@ -371,9 +324,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcVPCs:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source VPC IDs which send most amount of traffic."
@@ -386,9 +336,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentDstVPCs:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Destination VPC IDs which send most amount of traffic."
@@ -401,9 +348,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstVPCs:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source VPC IDs, Destination VPC IDs which send most amount of traffic."
@@ -416,9 +360,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstSubnets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source Subnet, Destination Subnet which send most amount of traffic."
@@ -431,9 +372,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstENI:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source ENI, Destination ENI which send most amount of traffic."
@@ -446,9 +384,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstAZs:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source AZ, Destination AZ which send most amount of traffic."
@@ -461,9 +396,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstAZsIPsPackets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source VPC, Destination VPC, Source AZ, Destination AZ, Source and Destination IPs, Packets details which send most amount of traffic."
@@ -476,9 +408,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstIPsPortPackets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, Source and Destination Port, Protocol, Packets details which send most amount of traffic."
@@ -491,9 +420,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstIPsDstPortPackets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, DestinationPort, Protocol, Packets details which send most amount of traffic."
@@ -506,9 +432,6 @@ Resources:
       WorkGroup: !Ref TGWAthenaWorkGroup
   TGWFlowLogsTopAttachmentSrcDstIPsProtocolPackets:
     Type: AWS::Athena::NamedQuery
-    DependsOn:
-      - TGWFlowLogsAthenaDatabase
-      - TGWAthenaWorkGroup
     Properties:
       Database: !Ref TGWFlowLogsAthenaDatabase
       Description: "Top 50 Transit Gateway attachments, Source and Destination IPs, Protocol, Packets details which send most amount of traffic."
@@ -577,8 +500,8 @@ Resources:
                     - glue:GetPartition
                   Resource:
                     - !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:catalog'
-                    - !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:database/${TGWFlowLogsAthenaDatabaseName}', !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:database/${TGWFlowLogsAthenaDatabase}']
-                    - !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:table/${TGWFlowLogsAthenaDatabaseName}/${TGWFlowLogsAthenaTableName}', !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:table/${TGWFlowLogsAthenaDatabase}/${TGWFlowLogsAthenaTable}']
+                    - !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:database/${TGWFlowLogsAthenaDatabase}'
+                    - !Sub 'arn:aws:glue:${S3BucketRegion}:${AWS::AccountId}:table/${TGWFlowLogsAthenaDatabase}/${TGWFlowLogsAthenaTable}'
                 - Effect: Allow
                   Action:
                     - s3:GetObjectAcl
@@ -595,7 +518,6 @@ Resources:
           -
             Key: Purpose
             Value: TGWFlowLogs
-    # Create Athena view for TGW Flow Logs
   # Creates a lambda fuction to add partitions to TGW Flow Logs external table
   TGWAthenaPartitionsFunction:
       Type: AWS::Lambda::Function
@@ -773,7 +695,7 @@ Resources:
       Targets: 
         - Arn: !Sub ${TGWAthenaPartitionsFunction.Arn}
           Id: DailyAddPartitionLambdaEventsRule
-          Input: !If [ExistingTGWLogsAthenaDataBaseCondition, !Sub  '{"frequency": "Daily", "dbName": "${TGWFlowLogsAthenaDatabaseName}", "TGWTableName": "${TGWFlowLogsAthenaTableName}", "s3Output": "${AthenaResultsOutputLocation}", "TGWFlowLogsBucketName": "${TGWFlowLogsBucketName}", "TGWFlowLogsFilePrefix": "${TGWFlowLogsFilePrefix}", "HiveCompatibleS3prefix": "${HiveCompatibleS3prefix}"}', !Sub  '{"frequency": "Daily", "dbName": "${TGWFlowLogsAthenaDatabase}", "TGWTableName": "${TGWFlowLogsAthenaTable}", "s3Output": "${AthenaResultsOutputLocation}", "TGWFlowLogsBucketName": "${TGWFlowLogsBucketName}", "TGWFlowLogsFilePrefix": "${TGWFlowLogsFilePrefix}", "HiveCompatibleS3prefix": "${HiveCompatibleS3prefix}"}']   
+          Input: !Sub  '{"frequency": "Daily", "dbName": "${TGWFlowLogsAthenaDatabase}", "TGWTableName": "${TGWFlowLogsAthenaTable}", "s3Output": "${AthenaResultsOutputLocation}", "TGWFlowLogsBucketName": "${TGWFlowLogsBucketName}", "TGWFlowLogsFilePrefix": "${TGWFlowLogsFilePrefix}", "HiveCompatibleS3prefix": "${HiveCompatibleS3prefix}"}'
   # Creates permission for cloudwatch events to execute lambda function
   PermissionForEventsToInvokeLambda: 
     Type: AWS::Lambda::Permission
@@ -788,12 +710,10 @@ Resources:
   # Creates an initializer trigger Athena partition lambda function invokation 
   CreatePartitionInitializer:
     Type: 'Custom::TGWFlowLogsAthenaPartitionInitializer'
-    DependsOn:
-      - TGWAthenaPartitionsFunction
     Properties:
       ServiceToken: !GetAtt TGWAthenaPartitionsFunction.Arn
-      dbName: !If [ExistingTGWLogsAthenaDataBaseCondition, !Ref TGWFlowLogsAthenaDatabaseName, !Sub '${TGWFlowLogsAthenaDatabase}']
-      TGWTableName: !If [ExistingTGWLogsAthenaTableCondition, !Ref TGWFlowLogsAthenaTableName, !Ref TGWFlowLogsAthenaTable]
+      dbName: !Sub '${TGWFlowLogsAthenaDatabase}'
+      TGWTableName: !Ref TGWFlowLogsAthenaTable
       service: tgwflowlogs
       frequency: "Daily"
       s3Output: !Ref AthenaResultsOutputLocation
