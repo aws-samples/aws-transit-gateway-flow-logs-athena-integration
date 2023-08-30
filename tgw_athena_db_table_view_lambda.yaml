@@ -524,7 +524,7 @@ Resources:
       Properties:
         Description: Adds partitions to tgwflowlogsathenadatabase Athena table for current day. Triggered by Cloudwatch scheduler with daily frequency.
         Handler: index.lambda_handler
-        Runtime: python3.8
+        Runtime: python3.11
         Role: !GetAtt 'TGWFlowLogsAthenaIntegrationLambdaExecutorRole.Arn'
         Timeout: 30
         ReservedConcurrentExecutions: 5
