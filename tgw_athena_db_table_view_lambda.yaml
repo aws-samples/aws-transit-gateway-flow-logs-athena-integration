@@ -14,7 +14,7 @@ Parameters:
     Default: ''
   TGWFlowLogsS3BucketLocation:
     Type: String
-    Description: URI path of Amazon S3 bucket folder where TGW Flow logs files are stored e.g. Location='s3://my-tgw-flow-logs-bucket/tgw/AWSLogs/0123456789/tgwflowlogs/us-east-1/2023/11/20/'
+    Description: URI path of Amazon S3 bucket folder where TGW Flow logs files are stored e.g. Location='s3://my-tgw-flow-logs-bucket/tgw/AWSLogs/'
   TGWFlowLogsFilePrefix:
     Description: (Optional) - The log file prefix in Amazon S3 bucket that comes right after s3 bucket name e.g. 'tgw'
     Type: String
@@ -33,7 +33,7 @@ Resources:
       Type: AWS::Athena::WorkGroup
       Properties:
         Name: TGWFlowLogsQueryWorkGroup
-        Description: This workgroup has the queries related to vpc flow logs.
+        Description: This workgroup has the queries related to vpc flow logs. Encryption is enabled for query result S3 bucket for security reasons.
         State: ENABLED
         Tags:
           - Key: "service"
@@ -45,6 +45,8 @@ Resources:
           RequesterPaysEnabled: true
           ResultConfiguration:
             OutputLocation: !Ref AthenaResultsOutputLocation
+            EncryptionConfiguration:
+              EncryptionOption: SSE_S3
           EngineVersion:
             SelectedEngineVersion: 'Athena engine version 3'
   # Creates a glue database for TGW Flow logs
