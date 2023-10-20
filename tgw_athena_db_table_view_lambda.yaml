@@ -3,7 +3,7 @@ Description: 'Template creates Athena Database and View for Transit Gateway Flow
 Parameters:
   AthenaQueryResultBucketArn:
     Type: String
-    Description: The ARN of the Amazon S3 bucket to which Athena query results are stored. e.g. 'arn:aws:s3:::aws-athena-query-results-us-east-1-XXXXXXXXXXXXXX'
+    Description: The ARN of the Amazon S3 bucket to which Athena query results are stored. e.g. 'arn:aws:s3:::aws-athena-query-results-us-east-1-XXXXXXXXXXXXXX'  **Warning** :- We recommend to keep the S3 bucket for Athena result in the same account and region.
     Default: ''
   AthenaResultsOutputLocation:
     Type: String
@@ -14,7 +14,7 @@ Parameters:
     Default: ''
   TGWFlowLogsS3BucketLocation:
     Type: String
-    Description: URI path of Amazon S3 bucket folder where TGW Flow logs files are stored e.g. Location='s3://my-tgw-flow-logs-bucket/tgw/AWSLogs/'
+    Description: URI path of Amazon S3 bucket folder where TGW Flow logs files are stored e.g. Location='s3://my-tgw-flow-logs-bucket/tgw/AWSLogs/   **Warning** :- We recommend you encrypt S3 bucket where you Transit Gateway Logs are stored and enable on secure connection to S3 bucket with aws:SecureTransport condition.
   TGWFlowLogsFilePrefix:
     Description: (Optional) - The log file prefix in Amazon S3 bucket that comes right after s3 bucket name e.g. 'tgw'
     Type: String
@@ -29,8 +29,100 @@ Parameters:
     Type: String
     Description: Region of the S3 bucket created in the central account. e.g. us-east-1  
 Resources:
+# Creates an IAM role for lambda function execution permission
+  TGWFlowLogsAthenaBktOwnerLambdaExecutorRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Path: /
+        Policies:
+          - PolicyName: TGWFlowLogsAthenaBktOwnerLambdaExecutorPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                  Resource:
+                    - !Sub 'arn:aws:logs:${S3BucketRegion}:${AWS::AccountId}:*'
+                - Effect: Allow
+                  Action:
+                    - s3:GetBucketAcl
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - !Sub 'arn:aws:s3:::${TGWFlowLogsBucketName}'
+                    - !Sub 'arn:aws:s3:::${TGWFlowLogsBucketName}/*'
+                    - !Sub 'arn:aws:logs:${S3BucketRegion}:${AWS::AccountId}:log-group:/aws/lambda/tgw_logs_bucket_owner_check_lambda_handler:*'
+        Tags:
+          -
+            Key: Name
+            Value: TGWFlowLogs-BktOwer-Lambda-Role
+          -
+            Key: Purpose
+            Value: TGWFlowLogs
+  TGWAthenaBucketOwnerCheckFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+          Description: Check bucket ACL to protect access to VPC Flow Logs bucket from user running CloudFormation template
+          Handler: index.lambda_handler
+          Runtime: python3.11
+          Role: !GetAtt 'TGWFlowLogsAthenaBktOwnerLambdaExecutorRole.Arn'
+          Timeout: 30
+          ReservedConcurrentExecutions: 5
+          Code:
+            ZipFile: |
+
+              import boto3
+              import cfnresponse
+
+              s3 = boto3.client('s3')
+
+              def lambda_handler(event, context):
+                  # Get the object from the event and show its content type
+                  print(event)
+                  bucket = s3_buckcet_flow_log = event["ResourceProperties"]["TGWFlowLogsBucketName"] if event.get("ResourceProperties") != None else event["TGWFlowLogsBucketName"]
+
+                  if event.get("RequestType") == 'Delete':
+                    status = cfnresponse.SUCCESS
+                    cfnresponse.send(event, context, status, {}, event["LogicalResourceId"])
+                  else:
+                    try:
+                        response = s3.get_bucket_acl(Bucket=bucket)
+                        status = cfnresponse.SUCCESS
+                        return response['ResponseMetadata']['HTTPStatusCode']
+                    except Exception as e:
+                        errs = e
+                        status = cfnresponse.FAILED
+                        #print(e)
+                        #raise e
+                    finally:
+                        # status = cfnresponse.SUCCESS
+                        if event.get("RequestType") != None: cfnresponse.send(event, context, status, {}, event.get("LogicalResourceId"))
+          Tags:
+            -
+              Key: Name
+              Value: TGWFlowLogs-Lambda-Function
+            -
+              Key: Purpose
+              Value: TGWFlowLogs
+  # Creates an initializer trigger Athena partition lambda function invokation 
+  CreateBucketOwnerCheckInitializer:
+    Type: 'Custom::TGWAthenaBucketOwnerCheckInitializer'
+    Properties:
+      ServiceToken: !GetAtt TGWAthenaBucketOwnerCheckFunction.Arn
+      TGWFlowLogsBucketName: !Ref TGWFlowLogsBucketName
   TGWAthenaWorkGroup:
       Type: AWS::Athena::WorkGroup
+      DependsOn: TGWAthenaBucketOwnerCheckFunction
       Properties:
         Name: TGWFlowLogsQueryWorkGroup
         Description: This workgroup has the queries related to vpc flow logs. Encryption is enabled for query result S3 bucket for security reasons.
